@@ -348,32 +348,43 @@ if sender_mode.startswith("Saved") and sb is not None:
     )
 
     crud = st.columns([1, 1, 1, 2])
-    with crud[0]:
-        if st.button("Save changes"):
-            cleaned = parse_sender_gmails(emails_text)
-            ok, msg = sb_upsert_profile(sb, selected.strip(), cleaned)
-            (st.success(msg) if ok else st.error(msg))
-            st.rerun()
-    with crud[1]:
-        new_name = st.text_input("New profile name", value="", key="new_profile_name")
-    with crud[2]:
-        if st.button("Create new"):
-            nm = new_name.strip()
-            if not nm:
-                st.error("Enter a profile name.")
+
+with crud[0]:
+    if st.button("Save changes"):
+        cleaned = parse_sender_gmails(emails_text)
+        ok, msg = sb_upsert_profile(sb, selected.strip(), cleaned)
+        if ok:
+            st.success(msg)
+        else:
+            st.error(msg)
+        st.rerun()
+
+with crud[1]:
+    new_name = st.text_input("New profile name", value="", key="new_profile_name")
+
+with crud[2]:
+    if st.button("Create new"):
+        nm = new_name.strip()
+        if not nm:
+            st.error("Enter a profile name.")
+        else:
+            ok, msg = sb_upsert_profile(sb, nm, parse_sender_gmails(emails_text))
+            if ok:
+                st.success(msg)
             else:
-                ok, msg = sb_upsert_profile(sb, nm, parse_sender_gmails(emails_text))
-                (st.success(msg) if ok else st.error(msg))
-                st.session_state.selected_profile = nm
-                st.rerun()
-    with crud[3]:
-        if st.button("Delete selected", type="secondary") and selected:
-            ok, msg = sb_delete_profile(sb, selected)
-            (st.success(msg) if ok else st.error(msg))
-            st.session_state.selected_profile = ""
+                st.error(msg)
+            st.session_state.selected_profile = nm
             st.rerun()
 
-    senders_from_profile = parse_sender_gmails(emails_text)
+with crud[3]:
+    if st.button("Delete selected", type="secondary") and selected:
+        ok, msg = sb_delete_profile(sb, selected)
+        if ok:
+            st.success(msg)
+        else:
+            st.error(msg)
+        st.session_state.selected_profile = ""
+        st.rerun()
 
 else:
     sender_file = st.file_uploader(
