@@ -128,34 +128,51 @@ def _format_time(dt: datetime) -> str:
 
 def build_time_schedule(
     n_rows: int,
-    tz_name: str,
+    recipient_tz_name: str,
+    sender_tz_name: str,
     start_t: time,
     end_t: time,
     min_step_min: int = 2,
     max_step_min: int = 5,
 ) -> list[str]:
-    """Build n_rows times inside a daily window; rolls to next day if needed."""
-    tz = ZoneInfo(tz_name) if ZoneInfo else None
+    """Build n_rows send times.
+
+    The time window (start_t/end_t) is interpreted in the RECIPIENT local time zone.
+    The output strings are converted to the SENDER local time zone (what the SDR should do).
+
+    Rolls to next day if needed.
+    """
+    tz_rec = ZoneInfo(recipient_tz_name) if ZoneInfo else None
+    tz_send = ZoneInfo(sender_tz_name) if ZoneInfo else None
+
     min_step_min = max(1, int(min_step_min))
     max_step_min = max(min_step_min, int(max_step_min))
 
     out: list[str] = []
     day = date.today()
-    while len(out) < n_rows:
-        start_dt = datetime.combine(day, start_t)
-        end_dt = datetime.combine(day, end_t)
-        if tz:
-            start_dt = start_dt.replace(tzinfo=tz)
-            end_dt = end_dt.replace(tzinfo=tz)
 
-        cur = start_dt
-        while len(out) < n_rows and cur <= end_dt:
-            out.append(_format_time(cur))
+    while len(out) < n_rows:
+        rec_start_dt = datetime.combine(day, start_t)
+        rec_end_dt = datetime.combine(day, end_t)
+
+        if tz_rec:
+            rec_start_dt = rec_start_dt.replace(tzinfo=tz_rec)
+            rec_end_dt = rec_end_dt.replace(tzinfo=tz_rec)
+
+        cur = rec_start_dt
+        while len(out) < n_rows and cur <= rec_end_dt:
+            if tz_rec and tz_send:
+                send_dt = cur.astimezone(tz_send)
+                out.append(_format_time(send_dt))
+            else:
+                # Fallback (shouldn't happen on Streamlit Cloud): output recipient-local time
+                out.append(_format_time(cur))
+
             cur += timedelta(minutes=random.randint(min_step_min, max_step_min))
 
         day += timedelta(days=1)
-    return out
 
+    return out
 
 def parse_sender_gmails(raw: str) -> list[str]:
     raw = raw or ""
@@ -280,18 +297,35 @@ chaser_templates = template_editor(
 
 st.subheader("Schedule & Sender Settings")
 
-tz_choice = st.radio(
-    "Time zone",
-    options=["UK (Europe/London)", "RSA (Africa/Johannesburg)"],
+# Choose the locale you are sending TO (recipient timezone) and the timezone you will work in.
+RECIPIENT_TZ_OPTIONS = {
+    "US Eastern (ET)": "America/New_York",
+    "US Central (CT)": "America/Chicago",
+    "US Mountain (MT)": "America/Denver",
+    "US Pacific (PT)": "America/Los_Angeles",
+    "UK": "Europe/London",
+    "South Africa": "Africa/Johannesburg",
+}
+
+recipient_label = st.selectbox(
+    "Recipient locale (send-to timezone)",
+    options=list(RECIPIENT_TZ_OPTIONS.keys()),
+    index=list(RECIPIENT_TZ_OPTIONS.keys()).index("UK") if "UK" in RECIPIENT_TZ_OPTIONS else 0,
+)
+recipient_tz_name = RECIPIENT_TZ_OPTIONS[recipient_label]
+
+sender_label = st.radio(
+    "Your timezone (Time column output)",
+    options=["UK", "South Africa"],
     horizontal=True,
 )
-tz_name = "Europe/London" if tz_choice.startswith("UK") else "Africa/Johannesburg"
+sender_tz_name = "Europe/London" if sender_label == "UK" else "Africa/Johannesburg"
 
 time_cols = st.columns(2)
 with time_cols[0]:
-    start_time = st.time_input("Start time", value=time(13, 0))
+    start_time = st.time_input("Recipient-local start time", value=time(13, 0))
 with time_cols[1]:
-    end_time = st.time_input("End time", value=time(15, 0))
+    end_time = st.time_input("Recipient-local end time", value=time(15, 0))
 
 step_cols = st.columns(2)
 with step_cols[0]:
@@ -452,7 +486,8 @@ if run:
     # Time + Sender columns
     out_time = build_time_schedule(
         n_rows=len(df),
-        tz_name=tz_name,
+        recipient_tz_name=recipient_tz_name,
+        sender_tz_name=sender_tz_name,
         start_t=start_time,
         end_t=end_time,
         min_step_min=int(min_step),
