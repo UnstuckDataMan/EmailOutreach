@@ -348,45 +348,47 @@ if sender_mode.startswith("Saved") and sb is not None:
     )
 
     crud = st.columns([1, 1, 1, 2])
-
-with crud[0]:
-    if st.button("Save changes"):
-        cleaned = parse_sender_gmails(emails_text)
-        ok, msg = sb_upsert_profile(sb, selected.strip(), cleaned)
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-        st.rerun()
-
-with crud[1]:
-    new_name = st.text_input("New profile name", value="", key="new_profile_name")
-
-with crud[2]:
-    if st.button("Create new"):
-        nm = new_name.strip()
-        if not nm:
-            st.error("Enter a profile name.")
-        else:
-            ok, msg = sb_upsert_profile(sb, nm, parse_sender_gmails(emails_text))
+    with crud[0]:
+        if st.button("Save changes"):
+            cleaned = parse_sender_gmails(emails_text)
+            ok, msg = sb_upsert_profile(sb, selected.strip(), cleaned)
             if ok:
                 st.success(msg)
             else:
                 st.error(msg)
-            st.session_state.selected_profile = nm
             st.rerun()
 
-with crud[3]:
-    if st.button("Delete selected", type="secondary") and selected:
-        ok, msg = sb_delete_profile(sb, selected)
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-        st.session_state.selected_profile = ""
-        st.rerun()
+    with crud[1]:
+        new_name = st.text_input("New profile name", value="", key="new_profile_name")
+
+    with crud[2]:
+        if st.button("Create new"):
+            nm = new_name.strip()
+            if not nm:
+                st.error("Enter a profile name.")
+            else:
+                ok, msg = sb_upsert_profile(sb, nm, parse_sender_gmails(emails_text))
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+                st.session_state.selected_profile = nm
+                st.rerun()
+
+    with crud[3]:
+        if st.button("Delete selected", type="secondary") and selected:
+            ok, msg = sb_delete_profile(sb, selected)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+            st.session_state.selected_profile = ""
+            st.rerun()
+
+    senders_from_profile = parse_sender_gmails(emails_text)
 
 else:
+    # --- upload / paste fallback ---
     sender_file = st.file_uploader(
         "Upload sender gmails (txt/csv; one email per line)",
         type=["txt", "csv"],
@@ -396,7 +398,7 @@ else:
         height=120,
         placeholder="leo@domain.com\nanother@domain.com",
     )
-
+    senders_from_profile = parse_sender_gmails(sender_file, sender_paste)
     raw = ""
     if sender_file is not None:
         try:
