@@ -323,7 +323,7 @@ sender_tz_name = "Europe/London" if sender_label == "UK" else "Africa/Johannesbu
 
 time_cols = st.columns(2)
 with time_cols[0]:
-    start_time = st.time_input("Recipient-local start time", value=time(09, 0))
+    start_time = st.time_input("Recipient-local start time", value=time(9, 0))
 with time_cols[1]:
     end_time = st.time_input("Recipient-local end time", value=time(16, 0))
 
