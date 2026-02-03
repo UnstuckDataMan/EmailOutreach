@@ -279,21 +279,21 @@ blank_fill = st.text_input("Blank cell replacement", value="[MISSING]")
 st.caption("If a cell is blank/empty, it becomes the value above (use empty string if you prefer).")
 
 subject_templates = template_editor(
-    "Subject template",
+    "Subject Template",
     session_key="subject_templates",
     min_templates=1,
     help_text="One or more subject lines. Rotates A → B → A… across rows.",
 )
 
 email_templates = template_editor(
-    "Email copy template",
+    "Email Copy Template",
     session_key="email_templates",
     min_templates=1,
     help_text="One or more main email bodies. Rotates A → B → A… across rows.",
 )
 
 chaser_templates = template_editor(
-    "Chaser copy template",
+    "Chaser Copy Template",
     session_key="chaser_templates",
     min_templates=0,
     help_text="Optional follow-up copy. If multiple are provided, rotates A → B → A…",
@@ -301,13 +301,13 @@ chaser_templates = template_editor(
 
 # LinkedIn templates
 linkedin_conn_templates = template_editor(
-    "LinkedIn Connection template",
+    "LinkedIn Connection Template",
     session_key="linkedin_conn_templates",
     min_templates=0,
     help_text="Optional LinkedIn connection request copy. Rotates A → B → A… across rows.",
 )
 linkedin_msg_templates = template_editor(
-    "LinkedIn Messaging template",
+    "LinkedIn Messaging Template",
     session_key="linkedin_msg_templates",
     min_templates=0,
     help_text="Optional LinkedIn message copy. Rotates A → B → A… across rows.",
@@ -547,10 +547,14 @@ if run:
         else:
             out_email_address.append("")
 
-        # User LinkedIn: prefer 'User Social', fallback to 'Person LinkedIn URL', else blank
+        # User LinkedIn: prefer 'User Social', fallback to 'Person Linkedin Url', else blank (case/space/underscore-insensitive)
         user_linkedin = ""
-        for col_opt in ["User Social", "Person LinkedIn URL"]:
-            col_actual = mapping.get(col_opt) or mapping.get(col_opt.replace(" ", "_"))
+        linkedin_col_candidates = [
+            k for k in mapping.keys()
+            if norm_key(k) in ("usersocial", "personlinkedinurl")
+        ]
+        for col_opt in linkedin_col_candidates:
+            col_actual = mapping.get(col_opt)
             if col_actual and not pd.isna(row.get(col_actual, "")) and str(row.get(col_actual, "")).strip():
                 user_linkedin = str(row.get(col_actual, "")).strip()
                 break
