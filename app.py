@@ -38,6 +38,10 @@ def build_header_map(df: pd.DataFrame) -> dict[str, str]:
         k = norm_key(col)
         if k not in m:
             m[k] = col
+        # Also add underscore variant for mapping (e.g. company_name → Company Name)
+        k_us = k.replace(" ", "_")
+        if k_us not in m:
+            m[k_us] = col
     return m
 
 
@@ -295,6 +299,20 @@ chaser_templates = template_editor(
     help_text="Optional follow-up copy. If multiple are provided, rotates A → B → A…",
 )
 
+# LinkedIn templates
+linkedin_conn_templates = template_editor(
+    "LinkedIn Connection template",
+    session_key="linkedin_conn_templates",
+    min_templates=0,
+    help_text="Optional LinkedIn connection request copy. Rotates A → B → A… across rows.",
+)
+linkedin_msg_templates = template_editor(
+    "LinkedIn Messaging template",
+    session_key="linkedin_msg_templates",
+    min_templates=0,
+    help_text="Optional LinkedIn message copy. Rotates A → B → A… across rows.",
+)
+
 st.subheader("Schedule & Sender Settings")
 
 # Choose the locale you are sending TO (recipient timezone) and the timezone you will work in.
@@ -474,7 +492,7 @@ if run:
     header_map = build_header_map(df)
 
     # Validate placeholders across subject + email + chaser
-    all_templates = subject_templates + email_templates + chaser_templates
+    all_templates = subject_templates + email_templates + chaser_templates + linkedin_conn_templates + linkedin_msg_templates
     mapping, missing_placeholders = validate_mappings(all_templates, header_map)
     if missing_placeholders:
         st.error("Some placeholders do not match any Excel column header (case-insensitive; ignores spaces/underscores).")
@@ -504,6 +522,9 @@ if run:
     out_chaser_copy: list[str] = []
     out_chaser_sent: list[str] = []
     out_lead: list[str] = []
+    out_user_linkedin: list[str] = []
+    out_linkedin_conn: list[str] = []
+    out_linkedin_msg: list[str] = []
 
     for i in range(len(df)):
         row = df.iloc[i]
@@ -511,10 +532,14 @@ if run:
         subj_t = subject_templates[i % len(subject_templates)]
         body_t = email_templates[i % len(email_templates)]
         chaser_t = chaser_templates[i % len(chaser_templates)] if len(chaser_templates) > 0 else ""
+        linkedin_conn_t = linkedin_conn_templates[i % len(linkedin_conn_templates)] if len(linkedin_conn_templates) > 0 else ""
+        linkedin_msg_t = linkedin_msg_templates[i % len(linkedin_msg_templates)] if len(linkedin_msg_templates) > 0 else ""
 
         subject_line = merge_row(subj_t, row, mapping, blank_fill)
         email_copy = merge_row(body_t, row, mapping, blank_fill)
         chaser_copy = merge_row(chaser_t, row, mapping, blank_fill) if chaser_t else ""
+        linkedin_conn = merge_row(linkedin_conn_t, row, mapping, blank_fill) if linkedin_conn_t else ""
+        linkedin_msg = merge_row(linkedin_msg_t, row, mapping, blank_fill) if linkedin_msg_t else ""
 
         if email_col:
             v = row.get(email_col, "")
@@ -522,12 +547,23 @@ if run:
         else:
             out_email_address.append("")
 
+        # User LinkedIn: prefer 'User Social', fallback to 'Person LinkedIn URL', else blank
+        user_linkedin = ""
+        for col_opt in ["User Social", "Person LinkedIn URL"]:
+            col_actual = mapping.get(col_opt) or mapping.get(col_opt.replace(" ", "_"))
+            if col_actual and not pd.isna(row.get(col_actual, "")) and str(row.get(col_actual, "")).strip():
+                user_linkedin = str(row.get(col_actual, "")).strip()
+                break
+        out_user_linkedin.append(user_linkedin)
+
         out_subject.append(subject_line)
         out_email_copy.append(email_copy)
         out_email_sent.append("")
         out_chaser_copy.append(chaser_copy)
         out_chaser_sent.append("")
         out_lead.append("")
+        out_linkedin_conn.append(linkedin_conn)
+        out_linkedin_msg.append(linkedin_msg)
 
     out_df = pd.DataFrame(
         {
@@ -540,6 +576,9 @@ if run:
             "Chaser copy": out_chaser_copy,
             "Chaser sent?": out_chaser_sent,
             "Lead?": out_lead,
+            "User LinkedIn": out_user_linkedin,
+            "LinkedIn Connection": out_linkedin_conn,
+            "LinkedIn Messaging": out_linkedin_msg,
         }
     )
 
