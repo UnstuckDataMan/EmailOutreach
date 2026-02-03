@@ -547,17 +547,16 @@ if run:
         else:
             out_email_address.append("")
 
-        # User LinkedIn: prefer 'User Social', fallback to 'Person Linkedin Url', else blank (case/space/underscore-insensitive)
+        # User LinkedIn: find column matching 'Person Linkedin Url' (case/space/underscore-insensitive)
         user_linkedin = ""
-        linkedin_col_candidates = [
-            k for k in mapping.keys()
-            if norm_key(k) in ("usersocial", "personlinkedinurl")
-        ]
-        for col_opt in linkedin_col_candidates:
-            col_actual = mapping.get(col_opt)
-            if col_actual and not pd.isna(row.get(col_actual, "")) and str(row.get(col_actual, "")).strip():
-                user_linkedin = str(row.get(col_actual, "")).strip()
+        linkedin_col = None
+        for col in df.columns:
+            if norm_key(col) == "personlinkedinurl":
+                linkedin_col = col
                 break
+        if linkedin_col:
+            v = row.get(linkedin_col, "")
+            user_linkedin = "" if pd.isna(v) else str(v)
         out_user_linkedin.append(user_linkedin)
 
         out_subject.append(subject_line)
