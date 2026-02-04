@@ -598,7 +598,7 @@ if run:
 
         # Define formats for conditional formatting
         yellow_format = writer.book.add_format({'bg_color': 'yellow'})
-        blue_format = writer.book.add_format({'bg_color': 'blue'})
+        light_blue_format = writer.book.add_format({'bg_color': '#ADD8E6'})  # Light blue
         green_format = writer.book.add_format({'bg_color': 'green'})
         pink_format = writer.book.add_format({'bg_color': '#FFC0CB'})  # Pink
         red_format = writer.book.add_format({'bg_color': 'red'})
@@ -646,7 +646,7 @@ if run:
             'type': 'cell',
             'criteria': '==',
             'value': '"Yes"',
-            'format': blue_format
+            'format': light_blue_format
         })
 
         # Chaser sent?: Yellow for "No", Blue for "Yes"
@@ -660,7 +660,7 @@ if run:
             'type': 'cell',
             'criteria': '==',
             'value': '"Yes"',
-            'format': blue_format
+            'format': light_blue_format
         })
 
         # Lead?: Green for "Lead", Pink for "Replied", Red for "Unsubscribed"
