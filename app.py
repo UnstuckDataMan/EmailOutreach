@@ -81,7 +81,10 @@ def merge_row(template: str, row: pd.Series, mapping: dict[str, str], blank_fill
             return blank_fill
         return str(val)
 
-    return PLACEHOLDER_RE.sub(repl, template)
+    merged = PLACEHOLDER_RE.sub(repl, template)
+    # Remove consecutive commas (e.g., ,, -> ,)
+    merged = re.sub(r',+', ',', merged)
+    return merged
 
 
 def find_email_column(df: pd.DataFrame) -> str | None:
@@ -525,6 +528,7 @@ if run:
     out_user_linkedin: list[str] = []
     out_linkedin_conn: list[str] = []
     out_linkedin_msg: list[str] = []
+    out_lead_2: list[str] = []
 
     for i in range(len(df)):
         row = df.iloc[i]
@@ -567,6 +571,7 @@ if run:
         out_lead.append("")
         out_linkedin_conn.append(linkedin_conn)
         out_linkedin_msg.append(linkedin_msg)
+        out_lead_2.append("")
 
     out_df = pd.DataFrame(
         {
@@ -582,6 +587,7 @@ if run:
             "User LinkedIn": out_user_linkedin,
             "LinkedIn Connection": out_linkedin_conn,
             "LinkedIn Messaging": out_linkedin_msg,
+            "Lead? 2": out_lead_2,
         }
     )
 
@@ -603,6 +609,7 @@ if run:
         email_sent_col = out_df.columns.get_loc("Email Sent?")
         chaser_sent_col = out_df.columns.get_loc("Chaser sent?")
         lead_col = out_df.columns.get_loc("Lead?")
+        lead_col_2 = out_df.columns.get_loc("Lead? 2")
 
         first_row = 1
         last_row = len(out_df)
@@ -613,11 +620,81 @@ if run:
 
         # Lead? dropdown
         ws.data_validation(first_row, lead_col, last_row, lead_col, {"validate": "list", "source": ["Lead", "Replied", "Unsubscribed"]})
+        ws.data_validation(first_row, lead_col_2, last_row, lead_col_2, {"validate": "list", "source": ["Lead", "Replied", "Unsubscribed"]})
 
         # Default sent columns to No
         for r in range(first_row, last_row + 1):
             ws.write(r, email_sent_col, "No")
             ws.write(r, chaser_sent_col, "No")
+
+        # Conditional formatting
+        # Email Sent?: Yellow for "No", Blue for "Yes"
+        ws.conditional_format(first_row, email_sent_col, last_row, email_sent_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"No"',
+            'format': {'bg_color': 'yellow'}
+        })
+        ws.conditional_format(first_row, email_sent_col, last_row, email_sent_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Yes"',
+            'format': {'bg_color': 'blue'}
+        })
+
+        # Chaser sent?: Yellow for "No", Blue for "Yes"
+        ws.conditional_format(first_row, chaser_sent_col, last_row, chaser_sent_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"No"',
+            'format': {'bg_color': 'yellow'}
+        })
+        ws.conditional_format(first_row, chaser_sent_col, last_row, chaser_sent_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Yes"',
+            'format': {'bg_color': 'blue'}
+        })
+
+        # Lead?: Green for "Lead", Pink for "Replied", Red for "Unsubscribed"
+        ws.conditional_format(first_row, lead_col, last_row, lead_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Lead"',
+            'format': {'bg_color': 'green'}
+        })
+        ws.conditional_format(first_row, lead_col, last_row, lead_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Replied"',
+            'format': {'bg_color': '#FFC0CB'}  # Pink
+        })
+        ws.conditional_format(first_row, lead_col, last_row, lead_col, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Unsubscribed"',
+            'format': {'bg_color': 'red'}
+        })
+
+        # Lead? 2: Same formatting as Lead?
+        ws.conditional_format(first_row, lead_col_2, last_row, lead_col_2, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Lead"',
+            'format': {'bg_color': 'green'}
+        })
+        ws.conditional_format(first_row, lead_col_2, last_row, lead_col_2, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Replied"',
+            'format': {'bg_color': '#FFC0CB'}  # Pink
+        })
+        ws.conditional_format(first_row, lead_col_2, last_row, lead_col_2, {
+            'type': 'cell',
+            'criteria': '==',
+            'value': '"Unsubscribed"',
+            'format': {'bg_color': 'red'}
+        })
 
     buffer.seek(0)
     st.success(f"Done. Generated {len(out_df)} rows.")
