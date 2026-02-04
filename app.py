@@ -270,13 +270,6 @@ def sb_delete_profile(sb, profile_name: str) -> tuple[bool, str]:
 st.set_page_config(page_title="Outreach Merge Tool", layout="centered")
 st.title("Outreach Merge Tool")
 
-with st.expander("Access", expanded=True):
-    pw = st.text_input("Team password", type="password")
-    expected = st.secrets.get("APP_PASSWORD", "")
-    if expected and pw != expected:
-        st.warning("Enter the team password to use the tool.")
-        st.stop()
-
 uploaded = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
 blank_fill = st.text_input("Blank cell replacement", value="[MISSING]")
 st.caption("If a cell is blank/empty, it becomes the value above (use empty string if you prefer).")
