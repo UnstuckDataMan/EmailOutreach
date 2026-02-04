@@ -596,6 +596,13 @@ if run:
         out_df.to_excel(writer, index=False, sheet_name="Outreach")
         ws = writer.sheets["Outreach"]
 
+        # Define formats for conditional formatting
+        yellow_format = writer.book.add_format({'bg_color': 'yellow'})
+        blue_format = writer.book.add_format({'bg_color': 'blue'})
+        green_format = writer.book.add_format({'bg_color': 'green'})
+        pink_format = writer.book.add_format({'bg_color': '#FFC0CB'})  # Pink
+        red_format = writer.book.add_format({'bg_color': 'red'})
+
         # Column widths
         for col_idx, col_name in enumerate(out_df.columns):
             sample = out_df[col_name].astype(str).head(50)
@@ -633,13 +640,13 @@ if run:
             'type': 'cell',
             'criteria': '==',
             'value': '"No"',
-            'format': {'bg_color': 'yellow'}
+            'format': yellow_format
         })
         ws.conditional_format(first_row, email_sent_col, last_row, email_sent_col, {
             'type': 'cell',
             'criteria': '==',
             'value': '"Yes"',
-            'format': {'bg_color': 'blue'}
+            'format': blue_format
         })
 
         # Chaser sent?: Yellow for "No", Blue for "Yes"
@@ -647,13 +654,13 @@ if run:
             'type': 'cell',
             'criteria': '==',
             'value': '"No"',
-            'format': {'bg_color': 'yellow'}
+            'format': yellow_format
         })
         ws.conditional_format(first_row, chaser_sent_col, last_row, chaser_sent_col, {
             'type': 'cell',
             'criteria': '==',
             'value': '"Yes"',
-            'format': {'bg_color': 'blue'}
+            'format': blue_format
         })
 
         # Lead?: Green for "Lead", Pink for "Replied", Red for "Unsubscribed"
@@ -661,19 +668,19 @@ if run:
             'type': 'cell',
             'criteria': '==',
             'value': '"Lead"',
-            'format': {'bg_color': 'green'}
+            'format': green_format
         })
         ws.conditional_format(first_row, lead_col, last_row, lead_col, {
             'type': 'cell',
             'criteria': '==',
             'value': '"Replied"',
-            'format': {'bg_color': '#FFC0CB'}  # Pink
+            'format': pink_format
         })
         ws.conditional_format(first_row, lead_col, last_row, lead_col, {
             'type': 'cell',
             'criteria': '==',
             'value': '"Unsubscribed"',
-            'format': {'bg_color': 'red'}
+            'format': red_format
         })
 
         # Lead? 2: Same formatting as Lead?
@@ -681,19 +688,19 @@ if run:
             'type': 'cell',
             'criteria': '==',
             'value': '"Lead"',
-            'format': {'bg_color': 'green'}
+            'format': green_format
         })
         ws.conditional_format(first_row, lead_col_2, last_row, lead_col_2, {
             'type': 'cell',
             'criteria': '==',
             'value': '"Replied"',
-            'format': {'bg_color': '#FFC0CB'}  # Pink
+            'format': pink_format
         })
         ws.conditional_format(first_row, lead_col_2, last_row, lead_col_2, {
             'type': 'cell',
             'criteria': '==',
             'value': '"Unsubscribed"',
-            'format': {'bg_color': 'red'}
+            'format': red_format
         })
 
     buffer.seek(0)
