@@ -225,16 +225,12 @@ def build_time_schedule_for_senders(
     repeats_per_sender: int = 10,
     min_step_min: int = 2,
     max_step_min: int = 5,
-    jitter_min: int = 2,
-    jitter_max: int = 5,
 ):
     """Build times aligned to sender blocks.
 
     Produces times in blocks: for each sender produce `repeats_per_sender` times
-    starting at the recipient-local `start_t` plus a small per-sender offset
-    (jitter). After one pass through all senders a single note row is inserted
-    (if additional rows remain) saying "No more emails for today delay to next day",
-    then remaining times are generated starting the next day.
+    starting at the recipient-local `start_t` plus a 5-minute stagger per sender
+    to ensure ordering. Continues across multiple days as needed.
     """
     if not senders:
         return build_time_schedule(n_rows, recipient_tz_name, sender_tz_name, start_t, end_t, min_step_min, max_step_min)
@@ -245,8 +241,6 @@ def build_time_schedule_for_senders(
     min_step_min = max(1, int(min_step_min))
     max_step_min = max(min_step_min, int(max_step_min))
     repeats_per_sender = max(1, int(repeats_per_sender))
-    jitter_min = max(1, int(jitter_min))
-    jitter_max = max(jitter_min, int(jitter_max))
 
     out: list[str] = []
     day = date.today()
@@ -262,8 +256,9 @@ def build_time_schedule_for_senders(
         rec_end_dt = rec_end_dt.replace(tzinfo=tz_rec)
 
     for si, _s in enumerate(senders):
-        # per-sender offset (in minutes)
-        offset = si * random.randint(jitter_min, jitter_max)
+        # per-sender offset (in minutes) - deterministic and monotonically increasing
+        # Each sender starts 5 minutes after the previous to ensure ordering
+        offset = si * 5
         sender_start = base_start_dt + timedelta(minutes=offset)
         cur = sender_start
         while len(out) < n_rows and len(out) < (si + 1) * repeats_per_sender and cur <= rec_end_dt:
@@ -291,8 +286,8 @@ def build_time_schedule_for_senders(
         for si, _s in enumerate(senders):
             if len(out) >= n_rows:
                 break
-            # per-sender offset (in minutes)
-            offset = si * random.randint(jitter_min, jitter_max)
+            # per-sender offset (in minutes) - deterministic and monotonically increasing
+            offset = si * 5
             sender_start = rec_start_day + timedelta(minutes=offset)
             cur = sender_start
             while len(out) < n_rows and len(out) < ((current_day - day).days * len(senders) * repeats_per_sender) + ((si + 1) * repeats_per_sender):
