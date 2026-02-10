@@ -198,13 +198,111 @@ def build_sender_sequence(senders: list[str], n_rows: int, repeats_per_sender: i
     if not senders:
         return [""] * n_rows
     repeats_per_sender = max(1, int(repeats_per_sender))
+
+    # First, produce one block per sender (sender1 x N, sender2 x N, ...)
     seq: list[str] = []
-    i = 0
-    while len(seq) < n_rows:
-        sender = senders[i % len(senders)]
-        seq.extend([sender] * repeats_per_sender)
-        i += 1
+    for s in senders:
+        seq.extend([s] * repeats_per_sender)
+
+    # If more rows are required, continue cycling to fill remaining rows
+    if len(seq) < n_rows:
+        i = 0
+        while len(seq) < n_rows:
+            sender = senders[i % len(senders)]
+            seq.extend([sender] * repeats_per_sender)
+            i += 1
+
     return seq[:n_rows]
+
+
+def build_time_schedule_for_senders(
+    senders: list[str],
+    n_rows: int,
+    recipient_tz_name: str,
+    sender_tz_name: str,
+    start_t: time,
+    end_t: time,
+    repeats_per_sender: int = 10,
+    min_step_min: int = 2,
+    max_step_min: int = 5,
+    jitter_min: int = 2,
+    jitter_max: int = 5,
+):
+    """Build times aligned to sender blocks.
+
+    Produces times in blocks: for each sender produce `repeats_per_sender` times
+    starting at the recipient-local `start_t` plus a small per-sender offset
+    (jitter). After one pass through all senders a single note row is inserted
+    (if additional rows remain) saying "No more emails for today delay to next day",
+    then remaining times are generated starting the next day.
+    """
+    if not senders:
+        return build_time_schedule(n_rows, recipient_tz_name, sender_tz_name, start_t, end_t, min_step_min, max_step_min)
+
+    tz_rec = ZoneInfo(recipient_tz_name) if ZoneInfo else None
+    tz_send = ZoneInfo(sender_tz_name) if ZoneInfo else None
+
+    min_step_min = max(1, int(min_step_min))
+    max_step_min = max(min_step_min, int(max_step_min))
+    repeats_per_sender = max(1, int(repeats_per_sender))
+
+    out: list[str] = []
+    day = date.today()
+
+    # Base recipient-local start datetime
+    base_start_dt = datetime.combine(day, start_t)
+    if tz_rec:
+        base_start_dt = base_start_dt.replace(tzinfo=tz_rec)
+
+    # Generate one block per sender
+    rec_end_dt = datetime.combine(day, end_t)
+    if tz_rec:
+        rec_end_dt = rec_end_dt.replace(tzinfo=tz_rec)
+
+    for si, _s in enumerate(senders):
+        # per-sender offset (in minutes)
+        offset = si * random.randint(jitter_min, jitter_max)
+        sender_start = base_start_dt + timedelta(minutes=offset)
+        cur = sender_start
+        while len(out) < n_rows and len(out) < (si + 1) * repeats_per_sender and cur <= rec_end_dt:
+            if tz_rec and tz_send:
+                send_dt = cur.astimezone(tz_send)
+                out.append(_format_time(send_dt))
+            else:
+                out.append(_format_time(cur))
+            cur += timedelta(minutes=random.randint(min_step_min, max_step_min))
+
+    # If we've filled all rows, return
+    if len(out) >= n_rows:
+        return out[:n_rows]
+
+    # Insert a single break note to indicate end of today's sending window
+    out.append("No more emails for today delay to next day")
+
+    # If we still need more rows, generate remaining times starting next day
+    remaining = n_rows - len(out)
+    if remaining <= 0:
+        return out[:n_rows]
+
+    next_day = day + timedelta(days=1)
+    rec_start_next = datetime.combine(next_day, start_t)
+    if tz_rec:
+        rec_start_next = rec_start_next.replace(tzinfo=tz_rec)
+
+    cur = rec_start_next
+    while len(out) < n_rows and cur <= datetime.combine(next_day, end_t).replace(tzinfo=tz_rec if tz_rec else None):
+        if tz_rec and tz_send:
+            send_dt = cur.astimezone(tz_send)
+            out.append(_format_time(send_dt))
+        else:
+            out.append(_format_time(cur))
+        cur += timedelta(minutes=random.randint(min_step_min, max_step_min))
+
+    # If still short (edge cases), pad with empty strings
+    if len(out) < n_rows:
+        out.extend([""] * (n_rows - len(out)))
+
+    return out[:n_rows]
 
 
 @st.cache_resource(show_spinner=False)
@@ -330,10 +428,15 @@ recipient_tz_name = RECIPIENT_TZ_OPTIONS[recipient_label]
 
 sender_label = st.radio(
     "Your timezone (Time column output)",
-    options=["UK", "South Africa"],
+    options=["UK", "South Africa", "North Macedonia"],
     horizontal=True,
 )
-sender_tz_name = "Europe/London" if sender_label == "UK" else "Africa/Johannesburg"
+if sender_label == "UK":
+    sender_tz_name = "Europe/London"
+elif sender_label == "South Africa":
+    sender_tz_name = "Africa/Johannesburg"
+else:  # North Macedonia
+    sender_tz_name = "Europe/Skopje"
 
 time_cols = st.columns(2)
 with time_cols[0]:
@@ -343,9 +446,9 @@ with time_cols[1]:
 
 step_cols = st.columns(2)
 with step_cols[0]:
-    min_step = st.number_input("Min gap (minutes)", min_value=1, max_value=60, value=2, step=1)
+    min_step = st.number_input("Min gap (minutes)", min_value=1, max_value=60, value=10, step=1)
 with step_cols[1]:
-    max_step = st.number_input("Max gap (minutes)", min_value=1, max_value=60, value=5, step=1)
+    max_step = st.number_input("Max gap (minutes)", min_value=1, max_value=60, value=20, step=1)
 
 repeats_per_sender = st.number_input(
     "Rows per sender before cycling (e.g., 10)",
@@ -497,19 +600,21 @@ if run:
 
     email_col = find_email_column(df)
 
-    # Time + Sender columns
-    out_time = build_time_schedule(
+    # Sender list and Time + Sender columns
+    sender_list = senders_from_profile if sender_mode.startswith("Saved") else senders_from_upload
+    out_sender = build_sender_sequence(sender_list, n_rows=len(df), repeats_per_sender=int(repeats_per_sender))
+
+    out_time = build_time_schedule_for_senders(
+        senders=sender_list,
         n_rows=len(df),
         recipient_tz_name=recipient_tz_name,
         sender_tz_name=sender_tz_name,
         start_t=start_time,
         end_t=end_time,
+        repeats_per_sender=int(repeats_per_sender),
         min_step_min=int(min_step),
         max_step_min=int(max_step),
     )
-
-    sender_list = senders_from_profile if sender_mode.startswith("Saved") else senders_from_upload
-    out_sender = build_sender_sequence(sender_list, n_rows=len(df), repeats_per_sender=int(repeats_per_sender))
 
     out_email_address: list[str] = []
     out_subject: list[str] = []
