@@ -245,6 +245,8 @@ def build_time_schedule_for_senders(
     min_step_min = max(1, int(min_step_min))
     max_step_min = max(min_step_min, int(max_step_min))
     repeats_per_sender = max(1, int(repeats_per_sender))
+    jitter_min = max(1, int(jitter_min))
+    jitter_max = max(jitter_min, int(jitter_max))
 
     out: list[str] = []
     day = date.today()
@@ -254,7 +256,7 @@ def build_time_schedule_for_senders(
     if tz_rec:
         base_start_dt = base_start_dt.replace(tzinfo=tz_rec)
 
-    # Generate one block per sender
+    # Generate one block per sender on day 1
     rec_end_dt = datetime.combine(day, end_t)
     if tz_rec:
         rec_end_dt = rec_end_dt.replace(tzinfo=tz_rec)
@@ -276,29 +278,36 @@ def build_time_schedule_for_senders(
     if len(out) >= n_rows:
         return out[:n_rows]
 
-    # Insert a single break note to indicate end of today's sending window
-    out.append("No more emails for today delay to next day")
+    # Continue on subsequent days with fresh sender blocks
+    current_day = day + timedelta(days=1)
+    while len(out) < n_rows:
+        rec_start_day = datetime.combine(current_day, start_t)
+        rec_end_day = datetime.combine(current_day, end_t)
+        if tz_rec:
+            rec_start_day = rec_start_day.replace(tzinfo=tz_rec)
+            rec_end_day = rec_end_day.replace(tzinfo=tz_rec)
 
-    # If we still need more rows, generate remaining times starting next day
-    remaining = n_rows - len(out)
-    if remaining <= 0:
-        return out[:n_rows]
+        # Generate one block per sender on this day
+        for si, _s in enumerate(senders):
+            if len(out) >= n_rows:
+                break
+            # per-sender offset (in minutes)
+            offset = si * random.randint(jitter_min, jitter_max)
+            sender_start = rec_start_day + timedelta(minutes=offset)
+            cur = sender_start
+            while len(out) < n_rows and len(out) < ((current_day - day).days * len(senders) * repeats_per_sender) + ((si + 1) * repeats_per_sender):
+                if cur > rec_end_day:
+                    break
+                if tz_rec and tz_send:
+                    send_dt = cur.astimezone(tz_send)
+                    out.append(_format_time(send_dt))
+                else:
+                    out.append(_format_time(cur))
+                cur += timedelta(minutes=random.randint(min_step_min, max_step_min))
 
-    next_day = day + timedelta(days=1)
-    rec_start_next = datetime.combine(next_day, start_t)
-    if tz_rec:
-        rec_start_next = rec_start_next.replace(tzinfo=tz_rec)
+        current_day += timedelta(days=1)
 
-    cur = rec_start_next
-    while len(out) < n_rows and cur <= datetime.combine(next_day, end_t).replace(tzinfo=tz_rec if tz_rec else None):
-        if tz_rec and tz_send:
-            send_dt = cur.astimezone(tz_send)
-            out.append(_format_time(send_dt))
-        else:
-            out.append(_format_time(cur))
-        cur += timedelta(minutes=random.randint(min_step_min, max_step_min))
-
-    # If still short (edge cases), pad with empty strings
+    # If still short, pad with empty strings
     if len(out) < n_rows:
         out.extend([""] * (n_rows - len(out)))
 
@@ -602,20 +611,14 @@ if run:
 
     # Sender list and Time + Sender columns
     sender_list = senders_from_profile if sender_mode.startswith("Saved") else senders_from_upload
-    out_sender = build_sender_sequence(sender_list, n_rows=len(df), repeats_per_sender=int(repeats_per_sender))
-
-    out_time = build_time_schedule_for_senders(
-        senders=sender_list,
-        n_rows=len(df),
-        recipient_tz_name=recipient_tz_name,
-        sender_tz_name=sender_tz_name,
-        start_t=start_time,
-        end_t=end_time,
-        repeats_per_sender=int(repeats_per_sender),
-        min_step_min=int(min_step),
-        max_step_min=int(max_step),
-    )
-
+    
+    # Calculate where the break note should be inserted (after day 1 complete)
+    repeats_val = int(repeats_per_sender)
+    rows_per_day = len(sender_list) * repeats_val if sender_list else len(df)
+    break_row_index = min(rows_per_day, len(df))  # Insert after day 1 or at end if df is smaller
+    
+    out_time: list[str] = []
+    out_sender: list[str] = []
     out_email_address: list[str] = []
     out_subject: list[str] = []
     out_email_copy: list[str] = []
@@ -628,7 +631,44 @@ if run:
     out_linkedin_msg: list[str] = []
     out_lead_2: list[str] = []
 
+    # Build times for all rows (adjusted for break row)
+    times_for_all = build_time_schedule_for_senders(
+        senders=sender_list,
+        n_rows=len(df) + 1,  # Request one extra to account for break row
+        recipient_tz_name=recipient_tz_name,
+        sender_tz_name=sender_tz_name,
+        start_t=start_time,
+        end_t=end_time,
+        repeats_per_sender=repeats_val,
+        min_step_min=int(min_step),
+        max_step_min=int(max_step),
+    )
+    
+    # Build senders for all rows
+    senders_for_all = build_sender_sequence(sender_list, n_rows=len(df) + 1, repeats_per_sender=repeats_val)
+
     for i in range(len(df)):
+        # Insert break row if we've reached the break point
+        if i == break_row_index and len(df) > break_row_index:
+            out_time.append("No more emails for today delay to next day")
+            out_sender.append("")
+            out_email_address.append("")
+            out_subject.append("")
+            out_email_copy.append("")
+            out_email_sent.append("")
+            out_chaser_copy.append("")
+            out_chaser_sent.append("")
+            out_lead.append("")
+            out_user_linkedin.append("")
+            out_linkedin_conn.append("")
+            out_linkedin_msg.append("")
+            out_lead_2.append("")
+        
+        # Get time and sender (adjust index if we're past break row)
+        time_idx = i + 1 if i >= break_row_index else i
+        out_time.append(times_for_all[time_idx] if time_idx < len(times_for_all) else "")
+        out_sender.append(senders_for_all[time_idx] if time_idx < len(senders_for_all) else "")
+
         row = df.iloc[i]
 
         subj_t = subject_templates[i % len(subject_templates)]
