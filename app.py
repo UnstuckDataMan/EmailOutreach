@@ -662,7 +662,7 @@ if run:
     # Break text (full caps)
     BREAK_TEXT = "NO MORE EMAILS FOR TODAY DELAY TO NEXT DAY"
 
-    breaks_inserted = 0
+    next_time_idx = 0
     sent_rows = 0
 
     for i in range(len(df)):
@@ -682,12 +682,15 @@ if run:
             out_linkedin_conn.append("")
             out_linkedin_msg.append("")
             out_lead_2.append("")
-            breaks_inserted += 1
 
-        # Compute indices into the time/sender sequences (shifted by breaks inserted so far)
-        time_idx = i + breaks_inserted
-        out_time.append(times_for_all[time_idx] if time_idx < len(times_for_all) else "")
-        out_sender.append(senders_for_all[time_idx] if time_idx < len(senders_for_all) else "")
+        # Assign time/sender from the next available slot (do not consume a slot for break rows)
+        if next_time_idx < len(times_for_all):
+            out_time.append(times_for_all[next_time_idx])
+            out_sender.append(senders_for_all[next_time_idx] if next_time_idx < len(senders_for_all) else "")
+        else:
+            out_time.append("")
+            out_sender.append("")
+        next_time_idx += 1
 
         row = df.iloc[i]
 
