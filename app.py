@@ -733,23 +733,6 @@ if run:
 
         sent_rows += 1
 
-        # After processing this row, insert a break row if we've completed a block
-        if block_rows > 0 and sent_rows % block_rows == 0 and i != len(df) - 1:
-            out_time.append(BREAK_TEXT)
-            out_sender.append("")
-            out_email_address.append("")
-            out_subject.append("")
-            out_email_copy.append("")
-            out_email_sent.append("")
-            out_chaser_copy.append("")
-            out_chaser_sent.append("")
-            out_lead.append("")
-            out_user_linkedin.append("")
-            out_linkedin_conn.append("")
-            out_linkedin_msg.append("")
-            out_lead_2.append("")
-            breaks_inserted += 1
-
     out_df = pd.DataFrame(
         {
             "Time": out_time,
