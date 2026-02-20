@@ -616,10 +616,16 @@ if run:
     # Sender list and Time + Sender columns
     sender_list = senders_from_profile if sender_mode.startswith("Saved") else senders_from_upload
     
-    # Calculate where the break note should be inserted (after day 1 complete)
+    # Calculate break insertion: insert a break line after every 10 sender accounts
+    # (i.e., after 10 * repeats_per_sender rows). If no senders provided, no breaks.
     repeats_val = int(repeats_per_sender)
-    rows_per_day = len(sender_list) * repeats_val if sender_list else len(df)
-    break_row_index = min(rows_per_day, len(df))  # Insert after day 1 or at end if df is smaller
+    if sender_list:
+        block_rows = repeats_val * 10
+    else:
+        block_rows = 0
+
+    # Number of breaks we may need between rows (not counting any trailing break)
+    expected_breaks = (len(df) // block_rows) if (block_rows > 0) else 0
     
     out_time: list[str] = []
     out_sender: list[str] = []
@@ -635,10 +641,10 @@ if run:
     out_linkedin_msg: list[str] = []
     out_lead_2: list[str] = []
 
-    # Build times for all rows (adjusted for break row)
+    # Build times for all original rows + expected extra to account for inserted breaks
     times_for_all = build_time_schedule_for_senders(
         senders=sender_list,
-        n_rows=len(df) + 1,  # Request one extra to account for break row
+        n_rows=len(df) + expected_breaks,
         recipient_tz_name=recipient_tz_name,
         sender_tz_name=sender_tz_name,
         start_t=start_time,
@@ -648,29 +654,19 @@ if run:
         min_step_min=int(min_step),
         max_step_min=int(max_step),
     )
-    
-    # Build senders for all rows
-    senders_for_all = build_sender_sequence(sender_list, n_rows=len(df) + 1, repeats_per_sender=repeats_val)
+
+    # Build senders for all original rows (we don't assign senders to inserted break rows)
+    senders_for_all = build_sender_sequence(sender_list, n_rows=len(df) + expected_breaks, repeats_per_sender=repeats_val)
+
+    # Break text (full caps)
+    BREAK_TEXT = "NO MORE EMAILS FOR TODAY DELAY TO NEXT DAY"
+
+    breaks_inserted = 0
+    sent_rows = 0
 
     for i in range(len(df)):
-        # Insert break row if we've reached the break point
-        if i == break_row_index and len(df) > break_row_index:
-            out_time.append("No more emails for today delay to next day")
-            out_sender.append("")
-            out_email_address.append("")
-            out_subject.append("")
-            out_email_copy.append("")
-            out_email_sent.append("")
-            out_chaser_copy.append("")
-            out_chaser_sent.append("")
-            out_lead.append("")
-            out_user_linkedin.append("")
-            out_linkedin_conn.append("")
-            out_linkedin_msg.append("")
-            out_lead_2.append("")
-        
-        # Get time and sender (adjust index if we're past break row)
-        time_idx = i + 1 if i >= break_row_index else i
+        # Compute indices into the time/sender sequences (shifted by breaks inserted so far)
+        time_idx = i + breaks_inserted
         out_time.append(times_for_all[time_idx] if time_idx < len(times_for_all) else "")
         out_sender.append(senders_for_all[time_idx] if time_idx < len(senders_for_all) else "")
 
@@ -715,6 +711,25 @@ if run:
         out_linkedin_conn.append(linkedin_conn)
         out_linkedin_msg.append(linkedin_msg)
         out_lead_2.append("")
+
+        sent_rows += 1
+
+        # After processing this row, insert a break row if we've completed a block
+        if block_rows > 0 and sent_rows % block_rows == 0 and i != len(df) - 1:
+            out_time.append(BREAK_TEXT)
+            out_sender.append("")
+            out_email_address.append("")
+            out_subject.append("")
+            out_email_copy.append("")
+            out_email_sent.append("")
+            out_chaser_copy.append("")
+            out_chaser_sent.append("")
+            out_lead.append("")
+            out_user_linkedin.append("")
+            out_linkedin_conn.append("")
+            out_linkedin_msg.append("")
+            out_lead_2.append("")
+            breaks_inserted += 1
 
     out_df = pd.DataFrame(
         {
@@ -872,6 +887,15 @@ if run:
             'criteria': formula,
             'format': yellow_format,
         })
+
+        # Bold format for break rows in the Time column
+        bold_time_format = writer.book.add_format({'bold': True})
+        time_col = out_df.columns.get_loc("Time")
+        # Overwrite the Time cell for any break rows with bold formatting
+        for r in range(first_row, last_row + 1):
+            cell_val = out_df.iloc[r - first_row, time_col]
+            if isinstance(cell_val, str) and cell_val.strip().upper() == "NO MORE EMAILS FOR TODAY DELAY TO NEXT DAY":
+                ws.write(r, time_col, cell_val, bold_time_format)
 
     buffer.seek(0)
     st.success(f"Done. Generated {len(out_df)} rows.")
