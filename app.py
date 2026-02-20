@@ -223,14 +223,15 @@ def build_time_schedule_for_senders(
     start_t: time,
     end_t: time,
     repeats_per_sender: int = 10,
+    sender_start_interval_min: int = 30,
     min_step_min: int = 2,
     max_step_min: int = 5,
 ):
     """Build times aligned to sender blocks.
 
     Produces times in blocks: for each sender produce `repeats_per_sender` times
-    starting at the recipient-local `start_t` plus a 5-minute stagger per sender
-    to ensure ordering. Continues across multiple days as needed.
+    starting at the recipient-local `start_t` plus a per-sender start interval
+    (e.g., 30 minutes) to ensure ordering. Continues across multiple days as needed.
     """
     if not senders:
         return build_time_schedule(n_rows, recipient_tz_name, sender_tz_name, start_t, end_t, min_step_min, max_step_min)
@@ -257,8 +258,8 @@ def build_time_schedule_for_senders(
 
     for si, _s in enumerate(senders):
         # per-sender offset (in minutes) - deterministic and monotonically increasing
-        # Each sender starts 5 minutes after the previous to ensure ordering
-        offset = si * 5
+        # Each sender starts `sender_start_interval_min` minutes after the previous
+        offset = si * int(sender_start_interval_min)
         sender_start = base_start_dt + timedelta(minutes=offset)
         cur = sender_start
         while len(out) < n_rows and len(out) < (si + 1) * repeats_per_sender and cur <= rec_end_dt:
@@ -287,7 +288,7 @@ def build_time_schedule_for_senders(
             if len(out) >= n_rows:
                 break
             # per-sender offset (in minutes) - deterministic and monotonically increasing
-            offset = si * 5
+            offset = si * int(sender_start_interval_min)
             sender_start = rec_start_day + timedelta(minutes=offset)
             cur = sender_start
             while len(out) < n_rows and len(out) < ((current_day - day).days * len(senders) * repeats_per_sender) + ((si + 1) * repeats_per_sender):
@@ -444,7 +445,7 @@ else:  # North Macedonia
 
 time_cols = st.columns(2)
 with time_cols[0]:
-    start_time = st.time_input("Recipient-local start time", value=time(9, 0))
+    start_time = st.time_input("Recipient-local start time", value=time(8, 30))
 with time_cols[1]:
     end_time = st.time_input("Recipient-local end time", value=time(16, 0))
 
@@ -459,6 +460,14 @@ repeats_per_sender = st.number_input(
     min_value=1,
     max_value=500,
     value=10,
+    step=1,
+)
+
+sender_start_interval = st.number_input(
+    "Sender start interval (minutes) (e.g. 30)",
+    min_value=1,
+    max_value=24 * 60,
+    value=30,
     step=1,
 )
 
@@ -635,6 +644,7 @@ if run:
         start_t=start_time,
         end_t=end_time,
         repeats_per_sender=repeats_val,
+        sender_start_interval_min=int(sender_start_interval),
         min_step_min=int(min_step),
         max_step_min=int(max_step),
     )
@@ -834,6 +844,33 @@ if run:
             'criteria': '==',
             'value': '"Unsubscribed"',
             'format': red_format
+        })
+
+        # Highlight the first row for each sender change (when Sender Gmail is non-empty
+        # and different from the previous row). This makes it easier to spot sender blocks.
+        sender_col = out_df.columns.get_loc("Sender Gmail")
+
+        def _col_idx_to_letter(idx: int) -> str:
+            """Convert zero-based column index to Excel column letters (0 -> A)."""
+            letters = ""
+            while idx >= 0:
+                letters = chr(ord('A') + (idx % 26)) + letters
+                idx = idx // 26 - 1
+            return letters
+
+        sender_col_letter = _col_idx_to_letter(sender_col)
+
+        # Formula applied to the full data row range. Using $<col><row> references so the row
+        # portion adjusts for each row in the applied range. Top data row is Excel row 2.
+        formula = f"=AND(${sender_col_letter}2<>\"\", ${sender_col_letter}2<>${sender_col_letter}1)"
+
+        # Apply the sender-change highlight to the Sender Gmail column only
+        first_col = 0
+        last_col = len(out_df.columns) - 1
+        ws.conditional_format(first_row, sender_col, last_row, sender_col, {
+            'type': 'formula',
+            'criteria': formula,
+            'format': yellow_format,
         })
 
     buffer.seek(0)
