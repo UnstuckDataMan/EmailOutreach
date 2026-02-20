@@ -624,8 +624,9 @@ if run:
     else:
         block_rows = 0
 
-    # Number of breaks we may need between rows (not counting any trailing break)
-    expected_breaks = (len(df) // block_rows) if (block_rows > 0) else 0
+    # Number of breaks we may need between rows (breaks inserted before the start
+    # of a block). Compute as how many full blocks start before the final row.
+    expected_breaks = ((len(df) - 1) // block_rows) if (block_rows > 0 and len(df) > 0) else 0
     
     out_time: list[str] = []
     out_sender: list[str] = []
@@ -665,6 +666,24 @@ if run:
     sent_rows = 0
 
     for i in range(len(df)):
+        # Before processing this row, insert a break row if the next row would start
+        # a new block of `block_rows` rows (and we're not at the very first row).
+        if block_rows > 0 and sent_rows > 0 and (sent_rows % block_rows) == 0:
+            out_time.append(BREAK_TEXT)
+            out_sender.append("")
+            out_email_address.append("")
+            out_subject.append("")
+            out_email_copy.append("")
+            out_email_sent.append("")
+            out_chaser_copy.append("")
+            out_chaser_sent.append("")
+            out_lead.append("")
+            out_user_linkedin.append("")
+            out_linkedin_conn.append("")
+            out_linkedin_msg.append("")
+            out_lead_2.append("")
+            breaks_inserted += 1
+
         # Compute indices into the time/sender sequences (shifted by breaks inserted so far)
         time_idx = i + breaks_inserted
         out_time.append(times_for_all[time_idx] if time_idx < len(times_for_all) else "")
