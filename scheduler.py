@@ -305,14 +305,24 @@ def build_month_schedule(
     if n_prospects <= 0:
         return []
 
+    # Reserve variance_min minutes before window_end so every baseline slot
+    # can receive at least the minimum jitter without exceeding the window.
+    eff_end_dt = _dt(window_end) - timedelta(minutes=variance_min)
+    if not (eff_end_dt.time() > window_start):
+        raise SchedulerError(
+            f"Window is too narrow: after reserving {variance_min} min for variance "
+            f"({window_start}–{window_end}), no time remains for scheduling."
+        )
+    effective_end = eff_end_dt.time()
+
     working_days = get_working_days(year, month, bank_holidays)
     daily_targets = compute_daily_targets(n_prospects, working_days)
-    max_s = compute_max_senders_per_day(window_end, sender1_start, len(senders))
+    max_s = compute_max_senders_per_day(effective_end, sender1_start, len(senders))
 
     if max_s == 0:
         raise SchedulerError(
-            f"Sender 1 start time ({sender1_start}) is at or past the window end "
-            f"({window_end}). No senders can be scheduled."
+            f"Sender 1 start time ({sender1_start}) leaves no room for sends before "
+            f"effective window end ({effective_end}, i.e. {window_end} − {variance_min} min)."
         )
 
     result: list[ScheduledSend] = []
@@ -335,7 +345,7 @@ def build_month_schedule(
             # Recipient-local start for this sender
             s_start = (_dt(sender1_start) + timedelta(minutes=si * 60)).time()
 
-            baseline = generate_baseline_slots(s_start, window_end, alloc)
+            baseline = generate_baseline_slots(s_start, effective_end, alloc)
             jittered, occupied = apply_variance_no_overlap(
                 baseline, occupied, window_end, variance_min, variance_max,
             )
